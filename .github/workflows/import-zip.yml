@@ -1,0 +1,52 @@
+name: Import ZIP
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  import_zip:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install unzip
+        run: sudo apt-get update && sudo apt-get install -y unzip
+
+      - name: Unzip and move files into repo root
+        run: |
+          set -euo pipefail
+          ZIP="btc-price-relay.zip"
+
+          rm -rf __import_tmp__
+          mkdir -p __import_tmp__
+          unzip -q "$ZIP" -d __import_tmp__
+
+          # If the zip contains a single top-level folder, move its contents.
+          # Otherwise move everything that got extracted.
+          top_count=$(find __import_tmp__ -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')
+          file_count=$(find __import_tmp__ -mindepth 1 -maxdepth 1 -type f | wc -l | tr -d ' ')
+
+          shopt -s dotglob nullglob
+
+          if [ "$top_count" -eq 1 ] && [ "$file_count" -eq 0 ]; then
+            top_dir=$(find __import_tmp__ -mindepth 1 -maxdepth 1 -type d | head -n 1)
+            echo "Detected single top-level folder: $top_dir"
+            mv "$top_dir"/* .
+          else
+            echo "Detected files/folders at zip root"
+            mv __import_tmp__/* .
+          fi
+
+          rm -rf __import_tmp__ "$ZIP"
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add -A
+          git commit -m "Import project from zip" || echo "Nothing to commit"
+          git push
